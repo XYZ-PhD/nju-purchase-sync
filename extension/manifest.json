@@ -1,15 +1,15 @@
 {
   "manifest_version": 3,
   "name": "同步采购 · 南大试剂",
-  "version": "1.2.0",
-  "description": "在南京大学试剂系统查看采购明细、核对到货、按 X-MOL 模板导出所选商品并记录订单导出次数。",
+  "version": "1.3.0",
+  "description": "在南大试剂系统核对采购和到货，生成 X-MOL 入库表并记录导出次数及已入库瓶数。",
   "permissions": ["storage", "downloads"],
   "background": { "service_worker": "worker.js" },
   "content_scripts": [
     {
       "matches": ["https://reagent.nju.edu.cn/labmai/cloudbean/personal/order*"],
       "exclude_matches": ["https://reagent.nju.edu.cn/labmai/cloudbean/personal/orderDetail/*"],
-      "js": ["core.js", "xls-template.js", "xls-export.js", "panel.js", "entry.js"],
+      "js": ["core.js", "xls-template.js", "xls-export.js", "intake.js", "intake-panel.js", "panel.js", "entry.js"],
       "run_at": "document_idle"
     },
     {

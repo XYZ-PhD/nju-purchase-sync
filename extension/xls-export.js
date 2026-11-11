@@ -42,7 +42,7 @@
     return join([header, unicode(text)]);
   }
 
-  function exportRows(rows) {
+  function exportRows(rows, intake) {
     const columns = template.columns;
     let nameFallbacks = 0;
     let missingFields = 0;
@@ -59,16 +59,23 @@
         }
         result.push({ column, text });
       }
-      if (core.isCas(cas)) {
-        add(columns.cas, cas, 20, "CAS 号");
-      } else {
-        if (!name) throw new Error("所选记录缺少有效 CAS 号和产品名称。");
+      if (intake) {
+        const number = String(row.productNumber ?? "").trim();
+        const location = String(row.stockLocation ?? "").trim();
+        if (!number || !location) throw new Error("请填写产品编号和库存地。");
+        add(0, number, 100, "产品编号");
+      }
+      const validCas = core.isCas(cas);
+      if (validCas) add(columns.cas, cas, 20, "CAS 号");
+      else if (!name) throw new Error("所选记录缺少有效 CAS 号和产品名称。");
+      if (!validCas || intake) {
         const nameColumn = /[\u3400-\u9fff]/.test(name) ? columns.chineseName : columns.englishName;
         add(nameColumn, name, 1000, "产品名称");
-        nameFallbacks++;
       }
+      if (!validCas) nameFallbacks++;
       add(columns.brand, brand, 100, "品牌");
       add(columns.pack, pack, 50, "包装规格");
+      if (intake) add(11, String(row.stockLocation).trim(), 50, "库存地");
       if (!brand || !pack) missingFields++;
       return result;
     });
@@ -235,9 +242,9 @@
     return result;
   }
 
-  function buildFile(rows) {
+  function buildFile(rows, { intake = false } = {}) {
     if (!rows.length || rows.length > 65535) throw new Error("请勾选 1 到 65535 条商品。");
-    const { cells, nameFallbacks, missingFields } = exportRows(rows);
+    const { cells, nameFallbacks, missingFields } = exportRows(rows, intake);
     const prefix = decode(template.globalsBeforeSst);
     const suffix = decode(template.globalsAfterSst);
     const strings = sharedStrings(cells, prefix.length);
