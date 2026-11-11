@@ -99,8 +99,9 @@ async function exportPurchase(message, sender) {
   const now = new Date();
   const stamp = [now.getFullYear(), now.getMonth() + 1, now.getDate(), now.getHours(),
     now.getMinutes(), now.getSeconds()].map(value => String(value).padStart(2, "0")).join("");
-  const filename = (message.intake === true ? "x-mol_intake_" : "x-mol_iv_products_") + stamp + ".xls";
-  const id = await chrome.downloads.download({ url: url.href, filename, conflictAction: "uniquify" });
+  const id = await chrome.downloads.download({
+    url: url.href, filename: "x-mol_iv_products_" + stamp + ".xls", conflictAction: "uniquify"
+  });
   try {
     await changeExportState(state => {
       state.pending[id] = batch;
@@ -111,7 +112,7 @@ async function exportPurchase(message, sender) {
   }
   // A small workbook may finish before its download ID has been stored.
   const state = await checkDownload(id).catch(() => "in_progress");
-  return { state, filename };
+  return { state };
 }
 
 chrome.downloads.onChanged.addListener(({ id, state }) => {

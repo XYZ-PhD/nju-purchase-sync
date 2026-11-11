@@ -43,12 +43,12 @@
         if (area === "local" && change) update(change.newValue?.accounts ?? {});
       });
     },
-    async exportRows(key, rows, options) {
-      const { bytes, nameFallbacks, missingFields } = globalThis.NjuPurchaseXls.buildFile(rows, options);
+    async exportRows(key, rows) {
+      const { bytes, nameFallbacks, missingFields } = globalThis.NjuPurchaseXls.buildFile(rows);
       const url = URL.createObjectURL(new Blob([bytes], { type: "application/vnd.ms-excel" }));
       try {
         const result = await exportRequest("nju-purchase/export", key, {
-          url, items: rows.map(row => row.key), intake: options?.intake === true
+          url, items: rows.map(row => row.key)
         });
         return { ...result, nameFallbacks, missingFields };
       } finally {

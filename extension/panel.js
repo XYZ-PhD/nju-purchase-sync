@@ -2,7 +2,6 @@
   "use strict";
 
   const core = globalThis.NjuPurchaseCore;
-  const intake = globalThis.NjuPurchaseIntake;
   const pageSize = 25;
   const style = `
     :host { all: initial; color: #292139; font: 14px/1.45 "Microsoft YaHei UI", system-ui, sans-serif; }
@@ -50,13 +49,6 @@
     .tabs button { padding: 8px 13px; background: transparent; border-color: transparent; }
     .tabs button[aria-pressed=true] { background: #eee2f0; color: #551750; }
     .selection { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; }
-    .arrival-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
-    .arrival-actions label { flex-direction: row; align-items: center; white-space: nowrap; }
-    .arrival-actions input { min-height: 0; accent-color: #651d5e; }
-    .intake-dialog { width: min(930px, calc(100% - 24px)); height: min(680px, calc(100% - 24px)); }
-    .intake-form { display: flex; flex: 1; flex-direction: column; min-height: 0; }
-    .intake-form td input:not([type=checkbox]):not([type=number]) { width: 100%; min-width: 120px; }
-    .intake-form td { overflow-wrap: anywhere; }
     .selected-count { color: #65596b; font-size: 12px; }
     .surface { flex: 1; min-height: 120px; margin: 11px 27px 0; overflow: auto;
       border: 1px solid #e9e1ed; border-radius: 10px; background: #fff; }
@@ -125,11 +117,6 @@
             <button type="button" data-view="summary" aria-pressed="false">品牌与 CAS 汇总</button>
             <button type="button" data-view="arrival" aria-pressed="false">到货核对</button>
           </nav>
-          <div class="arrival-actions" id="arrival-actions" hidden>
-            <label><input id="show-stocked" type="checkbox">显示已入库</label>
-            <button class="primary" id="prepare-intake" type="button" disabled>准备入库</button>
-            <button class="primary" id="review-intake" type="button" hidden>待确认入库</button>
-          </div>
           <div class="selection">
             <span id="selected-count" class="selected-count" aria-live="polite">已选 0 条</span>
             <button id="clear-selected" type="button" disabled>清空选择</button>
@@ -167,9 +154,7 @@
       errorList: get("error-list"), surface: get("surface"), foot: get("footnote"),
       prev: get("prev"), next: get("next"), position: get("position"),
       selectedCount: get("selected-count"), clearSelected: get("clear-selected"),
-      exportSelected: get("export-selected"), markOldExport: get("mark-old-export"),
-      arrivalActions: get("arrival-actions"), showStocked: get("show-stocked"),
-      prepareIntake: get("prepare-intake"), reviewIntake: get("review-intake")
+      exportSelected: get("export-selected"), markOldExport: get("mark-old-export")
     };
     let database = { orders: {}, stocked: {} };
     let storageKey = "";
@@ -177,23 +162,9 @@
     let tablePage = 1;
     let activeSync = null;
     let updatingExport = false;
-    let openingIntake = false;
-    let eligibleForIntake = new Set();
     let exportHistory = {};
     let exportRevision = 0;
     const selectedKeys = new Set();
-    const intakePanel = globalThis.NjuPurchaseIntakePanel.mount(doc, root, {
-      save: updateDatabase,
-      download(expected) {
-        const key = storageKey;
-        return services.lock(key, async () => {
-          const latest = await services.read(key);
-          const batch = intake.batchForDownload(latest, expected);
-          return services.exportRows(key, batch.rows, { intake: true });
-        });
-      },
-      message
-    });
 
     function node(tag, text, className) {
       const element = doc.createElement(tag);
@@ -227,16 +198,6 @@
       const cannotExport = count === 0 || activeSync !== null || updatingExport;
       elements.exportSelected.disabled = cannotExport;
       elements.markOldExport.disabled = cannotExport;
-      const showingArrival = view === "arrival";
-      const batch = database.intakeBatch;
-      elements.arrivalActions.hidden = !showingArrival;
-      elements.exportSelected.classList.toggle("primary", !showingArrival);
-      elements.prepareIntake.hidden = Boolean(batch);
-      elements.prepareIntake.disabled = cannotExport || openingIntake ||
-        ![...selectedKeys].some(key => eligibleForIntake.has(key));
-      elements.reviewIntake.hidden = !batch;
-      elements.reviewIntake.disabled = activeSync !== null || updatingExport || openingIntake;
-      elements.reviewIntake.textContent = batch ? "待确认入库（" + batch.rows.length + " 瓶）" : "待确认入库";
       const inputs = [...elements.surface.querySelectorAll(".row-select")];
       let checked = 0;
       for (const input of inputs) {
@@ -253,11 +214,8 @@
 
     function render() {
       const records = core.records(database);
-      eligibleForIntake = new Set(records.filter(intake.canPrepare).map(row => row.key));
-      const hideStocked = view === "arrival" && !elements.showStocked.checked;
       if (selectedKeys.size) {
-        const available = new Set(records.filter(row => !hideStocked || !core.isArrival(row) ||
-          row.quantity === null || row.stocked !== row.quantity).map(row => row.key));
+        const available = new Set(records.map(row => row.key));
         for (const key of selectedKeys) if (!available.has(key)) selectedKeys.delete(key);
       }
       const rows = filteredRecords(records);
@@ -274,7 +232,7 @@
         return metric;
       }));
 
-      const content = view === "summary" ? summary.groups : view === "arrival" ? (hideStocked ? pending : arrivals) : rows;
+      const content = view === "summary" ? summary.groups : view === "arrival" ? arrivals : rows;
       const pages = Math.max(1, Math.ceil(content.length / pageSize));
       tablePage = Math.min(tablePage, pages);
       elements.prev.disabled = tablePage <= 1;
@@ -284,11 +242,11 @@
         ? "汇总排除取消及退货行。" + (summary.needsReview
           ? " 另有 " + summary.needsReview + " 行品牌、CAS 或数量待核对。" : "")
         : view === "arrival"
-          ? "勾选实际已到货的商品准备入库。已确认入库的瓶数会从待入库数量中扣除。"
+          ? "这里只显示平台标记到货的商品。按实物和入库记录填写已入库数量。"
           : "点击商品行或复选框勾选，支持跨页选择。点击 CAS 号可复制。";
 
       if (!content.length) {
-        const empty = view === "arrival" ? "当前筛选下没有待处理的到货商品。" :
+        const empty = view === "arrival" ? "当前结果中没有平台标记到货的商品。" :
           view === "summary" ? "当前结果中没有可汇总的品牌和 CAS。" :
           "当前没有匹配记录。同步订单页或调整筛选条件。";
         elements.surface.replaceChildren(node("div", empty, "empty"));
@@ -320,7 +278,7 @@
       const columns = view === "summary"
         ? ["品牌", "CAS 号", "试剂", "订购数量", "订单数"]
         : ["试剂及订单", "品牌", "CAS 号", "货号 / 包装", "订购数量", "商品状态", "订单导出"];
-      if (view === "arrival") columns.push("已入库数量", "待入库瓶数");
+      if (view === "arrival") columns.push("已入库数量");
       for (const title of columns) {
         const cell = node("th", title);
         cell.scope = "col";
@@ -427,24 +385,7 @@
       exported.dataset.orderId = row.order.id;
       exported.dataset.itemKey = row.key;
       showExportCount(exported);
-      if (view === "arrival") {
-        addStockedControl(tr.insertCell(), row);
-        tr.insertCell().textContent = intake.remaining(row) ?? "待核对";
-      }
-    }
-
-    function updateDatabase(change) {
-      const key = storageKey;
-      return services.lock(key, async () => {
-        const latest = await services.read(key);
-        const result = change(latest);
-        await services.write(key, latest);
-        if (key === storageKey) {
-          database = latest;
-          render();
-        }
-        return result;
-      });
+      if (view === "arrival") addStockedControl(tr.insertCell(), row);
     }
 
     function addStockedControl(cell, row) {
@@ -458,8 +399,7 @@
       input.max = row.quantity;
       input.step = 1;
       input.value = row.stocked;
-      const pendingBatch = database.intakeBatch?.rows.some(bottle => bottle.key === row.key);
-      input.disabled = activeSync !== null || pendingBatch;
+      input.disabled = activeSync !== null;
       input.setAttribute("aria-label", row.name + " 已入库数量");
       input.addEventListener("change", async () => {
         if (input.value === "" || !input.checkValidity()) {
@@ -469,17 +409,17 @@
         input.disabled = true;
         try {
           const value = Number(input.value);
-          await updateDatabase(latest => {
+          await services.lock(storageKey, async () => {
+            const latest = await services.read(storageKey);
             const current = core.records(latest).find(item => item.key === row.key);
             if (!current || !core.isArrival(current) || current.quantity === null ||
               value > current.quantity) throw new Error("订单状态或数量已变更，请重新打开核对。");
-            if (latest.intakeBatch?.rows.some(bottle => bottle.key === row.key)) {
-              throw new Error("该商品在待确认批次中，请先处理该批次。");
-            }
-            latest.stocked ??= {};
             latest.stocked[row.key] = value;
+            await services.write(storageKey, latest);
+            database = latest;
           });
           message("已在本浏览器记录入库数量。");
+          render();
         } catch (error) {
           message("入库数量未保存。", [error.message]);
           input.value = row.stocked;
@@ -487,7 +427,6 @@
         }
       });
       cell.append(input);
-      if (pendingBatch) cell.append(node("span", "本批待确认", "sub"));
       if (row.stocked > row.quantity) cell.append(node("span", "数量变化待核对", "sub amber"));
     }
 
@@ -650,33 +589,6 @@
     elements.syncPage.addEventListener("click", () => { void sync(false); });
     elements.syncAll.addEventListener("click", () => { void sync(true); });
     elements.stop.addEventListener("click", stop);
-    async function openIntake() {
-      if (openingIntake || activeSync || updatingExport || !storageKey) return;
-      const key = storageKey;
-      openingIntake = true;
-      updateSelection();
-      try {
-        const latest = await services.read(key);
-        if (!dialog.open || view !== "arrival" || key !== storageKey || activeSync || updatingExport) return;
-        database = latest;
-        render();
-        if (database.intakeBatch) {
-          intakePanel.review(database.intakeBatch);
-        } else {
-          const selected = core.records(database).filter(row => selectedKeys.has(row.key) && intake.canPrepare(row));
-          if (selected.length) intakePanel.prepare(selected);
-          else message("请勾选有待入库瓶数的到货商品。");
-        }
-      } catch (error) {
-        message("入库记录暂未读取。" + error.message);
-      } finally {
-        openingIntake = false;
-        updateSelection();
-      }
-    }
-    elements.prepareIntake.addEventListener("click", () => { void openIntake(); });
-    elements.reviewIntake.addEventListener("click", () => { void openIntake(); });
-    elements.showStocked.addEventListener("change", () => { tablePage = 1; render(); });
     elements.clearSelected.addEventListener("click", () => {
       selectedKeys.clear();
       updateSelection();

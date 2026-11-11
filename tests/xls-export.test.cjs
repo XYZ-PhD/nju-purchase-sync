@@ -41,12 +41,3 @@ test("empty and overlength input is rejected without truncation", () => {
   assert.throws(() => buildFile([{ name: "", cas: "", brand: "", pack: "" }]), /有效 CAS/);
   assert.throws(() => buildFile([{ ...example, pack: "规".repeat(51) }]), /50 字符/);
 });
-
-test("an intake workbook includes a number and location for every bottle", () => {
-  const first = { ...example, productNumber: "0007", stockLocation: "A-01" };
-  const second = { ...first, productNumber: "R-008", stockLocation: "B-03" };
-  assert.throws(() => buildFile([example], { intake: true }), /产品编号和库存地/);
-  const output = buildFile([first, second], { intake: true });
-  assert.equal(output.nameFallbacks, 0);
-  fs.writeFileSync(path.join(__dirname, "test-intake.xls"), output.bytes);
-});

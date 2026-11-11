@@ -6,8 +6,8 @@
 
 | 浏览器 | 安装包 |
 | --- | --- |
-| Google Chrome | [下载 Chrome 版 v1.3.0](https://github.com/XYZ-PhD/nju-purchase-sync/releases/download/v1.3.0/nju-purchase-sync-chrome-v1.3.0.zip) |
-| Microsoft Edge | [下载 Edge 版 v1.3.0](https://github.com/XYZ-PhD/nju-purchase-sync/releases/download/v1.3.0/nju-purchase-sync-edge-v1.3.0.zip) |
+| Google Chrome | [下载 Chrome 版 v1.2.0](https://github.com/XYZ-PhD/nju-purchase-sync/releases/download/v1.2.0/nju-purchase-sync-chrome-v1.2.0.zip) |
+| Microsoft Edge | [下载 Edge 版 v1.2.0](https://github.com/XYZ-PhD/nju-purchase-sync/releases/download/v1.2.0/nju-purchase-sync-edge-v1.2.0.zip) |
 
 ## 安装
 
@@ -29,23 +29,17 @@
 ## 使用
 
 1. 打开「同步采购」，等待当前页订单同步。需要更多订单时，点「同步筛选范围全部页」。
-2. 在「到货核对」中勾选商品，点「准备入库」，核对本次实际收到的瓶数。
-3. 每瓶填写一个产品编号，填写本批库存地。单瓶库存地可单独填写。点「生成并下载入库表」。
-4. 在 X-MOL 库存管理页点「导入」，选择刚下载的 .xls 文件，再点「导入」。
-5. 查看 X-MOL「库存导入记录」。回插件打开「待确认入库」，勾选实际成功的瓶号并确认。部分成功时，可单独下载剩余瓶号。
+2. 在「采购明细」中勾选要入库的商品。翻页后，已勾选的商品会保留。
+3. 确认「已选」数量，点击「导出所选 .xls」。
+4. 打开 Excel，补填试剂编号和其他入库信息，再在 X-MOL 中导入。
 
-| 入库信息 | X-MOL 模板列 |
+| 信息 | X-MOL 模板列 |
 | --- | --- |
-| 产品编号 | A 列 |
 | CAS 号 | B 列 |
-| 产品名称 | C 或 D 列 |
 | 品牌 | F 列 |
 | 包装规格 | I 列 |
-| 库存地 | L 列 |
 
-入库表每瓶一行，每批最多 3000 行。「到货核对」默认显示仍需处理的商品，可勾选「显示已入库」查看已完成的记录。待确认批次会在刷新后恢复。处理完该批后，可继续准备下一批。编号重复检查覆盖本批和本浏览器已通过插件确认的编号。
-
-在「采购明细」跨页勾选商品后，也可用「导出所选 .xls」下载采购信息，每个商品行导出一行。
+每个勾选商品行导出一行。订购数量大于 1 时，如需每瓶单独编号，请在 Excel 中复制相应行并分别填写编号。
 
 「订单导出」列显示已完成的导出次数。同一份 .xls 选了同一订单的多件商品，订单只增加 1 次。只导出部分商品时，其他商品行会标出各自的记录。
 
@@ -55,18 +49,18 @@
 
 ## 数据与使用说明
 
-- 同步由打开面板或点击同步按钮触发，使用当前登录账号可见的订单。采购台账、待确认批次、入库数量和导出次数保存在当前浏览器的扩展本地存储中，并按网页显示的账号名分组。
+- 同步由打开面板或点击同步按钮触发，使用当前登录账号可见的订单。采购台账、到货记录和导出次数保存在当前浏览器的扩展本地存储中，并按网页显示的账号名分组。
 - 扩展使用浏览器的下载权限确认本扩展发起的 .xls 下载状态。下载完成后才计次，取消或下载失败时不增加次数。
 - CAS 号会进行格式和校验位检查。缺少有效 CAS 时，导出表格使用产品名称标识该商品。缺失的品牌、包装规格及其他字段需要补全。
 - 汇总会排除已取消、已退货、已退款的订单，以及已取消、已退货、已退款、退货中或退款中的商品行。导出所选商品时，以实际勾选的商品行为准。
-- Chrome 和 Edge 已用模拟订单核对下载、导出计次、入库表逐瓶生成、刷新恢复和部分确认。
+- Chrome v1.1.0 已用真实订单核对跨页勾选与 B、F、I 列。v1.2.0 已在 Chrome 和 Edge 中用模拟订单核对下载、计次、刷新保留和补记去重。
 
 ## 源码与测试
 
 `extension/` 是可直接加载的扩展源码，`tests/` 使用模拟数据。安装 Node.js 18 或更新版本后，在仓库目录运行以下命令可执行离线测试。
 
 ```sh
-node --test tests/logic.test.cjs tests/xls-export.test.cjs tests/export-history.test.cjs tests/intake.test.cjs
+node --test tests/logic.test.cjs tests/xls-export.test.cjs tests/export-history.test.cjs
 ```
 
 安装 Python 3 后，可分别重新生成两个浏览器的安装包，输出保存在 `dist/`。
