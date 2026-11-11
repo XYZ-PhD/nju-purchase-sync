@@ -1,17 +1,17 @@
 "use strict";
 
 const assert = require("node:assert/strict");
-const fs = require("node:fs");
 const path = require("node:path");
 const { test } = require("node:test");
-const vm = require("node:vm");
 
 const extension = path.resolve(__dirname, "../extension");
 const listUrl = "https://reagent.nju.edu.cn/labmai/cloudbean/personal/order";
 const detailPath = "/labmai/cloudbean/personal/orderDetail/2026110000000001?voucher=MTEST01";
 const absoluteDetailUrl = "https://reagent.nju.edu.cn" + detailPath;
 require(path.join(extension, "core.js"));
+require(path.join(extension, "detail.js"));
 const core = globalThis.NjuPurchaseCore;
+const { createReader } = globalThis.NjuPurchaseDetail;
 
 function detailDocument(products) {
   const headers = ["", "图片", "商品", "单价", "数量", "总价", "状态", "操作"];
@@ -109,46 +109,62 @@ test("summary keeps legitimate repeat purchases, avoids repeated snapshots and e
   assert.equal(needsReview, 1);
 });
 
-test("background worker retries a not-yet-ready detail tab and closes only its own tab", async () => {
-  const calls = [];
-  let listener;
-  let attempts = 0;
-  const worker = {
-    URL,
-    setTimeout: callback => setImmediate(callback),
-    chrome: {
-      runtime: { id: "extension", onMessage: { addListener: callback => { listener = callback; } } },
-      downloads: { onChanged: { addListener() {} }, onErased: { addListener() {} } },
-      tabs: {
-        create: async options => { calls.push(["open", options]); return { id: 413 }; },
-        sendMessage: async (id, message) => {
-          assert.equal(id, 413);
-          assert.equal(message.orderId, "2026110000000001");
-          if (++attempts === 1) throw new Error("Content script is not ready.");
-          if (attempts === 2) return { ready: false };
-          return { rows: [product] };
-        },
-        remove: async id => { calls.push(["close", id]); }
+function readerFixture() {
+  let attachments = 0;
+  const navigations = [];
+  const frame = {
+    isConnected: false,
+    contentDocument: null,
+    setAttribute() {},
+    set src(value) { navigations.push(value); },
+    remove() { this.isConnected = false; }
+  };
+  const doc = {
+    createElement: tag => {
+      assert.equal(tag, "iframe");
+      return frame;
+    },
+    body: {
+      append: element => {
+        assert.equal(element, frame);
+        element.isConnected = true;
+        attachments++;
       }
     }
   };
-  const context = vm.createContext(worker);
-  context.importScripts = name => vm.runInContext(fs.readFileSync(path.join(extension, name), "utf8"), context);
-  vm.runInContext(fs.readFileSync(path.join(extension, "worker.js"), "utf8"), context);
-  const request = { type: "nju-purchase/load-detail", url: absoluteDetailUrl };
-  const blocked = await new Promise(resolve => listener(request, {
-    id: "extension", url: "https://example.net", tab: { windowId: 23 }
-  }, resolve));
-  assert.equal(typeof blocked.error, "string");
-  assert.equal(calls.length, 0);
-  const result = await new Promise(resolve => {
-    assert.equal(listener(request, {
-      id: "extension", url: listUrl, tab: { windowId: 23 }
-    }, resolve), true);
-  });
-  assert.deepEqual(result.rows, [product]);
-  assert.equal(attempts, 3);
-  assert.equal(calls[0][1].active, false);
-  assert.equal(calls[0][1].windowId, 23);
-  assert.deepEqual(calls[1], ["close", 413]);
+  return { doc, frame, navigations, attachmentCount: () => attachments };
+}
+
+test("detail sync reads distinct orders through one hidden frame and ignores the previous document", async () => {
+  const { doc, frame, navigations, attachmentCount } = readerFixture();
+  const reader = createReader(doc);
+  await assert.rejects(reader.read("https://example.net" + detailPath), /地址无效/);
+  assert.deepEqual(navigations, []);
+  const first = reader.read(absoluteDetailUrl);
+  frame.contentDocument = { ...detailDocument([product]), URL: absoluteDetailUrl };
+  assert.equal((await first)[0].name, product.name);
+
+  const nextUrl = absoluteDetailUrl.replace("0001?", "0002?");
+  const next = reader.read(nextUrl);
+  const secondProduct = { ...product, id: "502", name: "测试试剂乙" };
+  frame.contentDocument = { ...detailDocument([secondProduct]), URL: nextUrl };
+  assert.equal((await next)[0].name, secondProduct.name);
+  assert.deepEqual(navigations, [absoluteDetailUrl, nextUrl]);
+  assert.equal(attachmentCount(), 1);
+  assert.equal(frame.hidden, true);
+  reader.close();
+  assert.equal(frame.isConnected, false);
+});
+
+test("stopping a sync cancels the pending detail without starting the next order", async () => {
+  const { doc, frame, navigations } = readerFixture();
+  const controller = new AbortController();
+  const reader = createReader(doc, controller.signal);
+  const pending = reader.read(absoluteDetailUrl);
+  controller.abort();
+  await assert.rejects(pending, { name: "AbortError" });
+  await assert.rejects(reader.read(absoluteDetailUrl), { name: "AbortError" });
+  reader.close();
+  assert.deepEqual(navigations, [absoluteDetailUrl]);
+  assert.equal(frame.isConnected, false);
 });

@@ -30,8 +30,8 @@
     write(key, database) {
       return chrome.storage.local.set({ [key]: database });
     },
-    loadDetail(url) {
-      return chrome.runtime.sendMessage({ type: "nju-purchase/load-detail", url });
+    createDetailReader(signal) {
+      return globalThis.NjuPurchaseDetail.createReader(document, signal);
     },
     async readExportHistory(key) {
       const result = await exportRequest("nju-purchase/read-exports", key);

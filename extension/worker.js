@@ -125,47 +125,14 @@ chrome.downloads.onErased.addListener(id => {
   void settleExport(id, "erased").catch(console.error);
 });
 
-async function readDetail(source, windowId) {
-  const tab = await chrome.tabs.create({ url: source.url, active: false, windowId });
-  try {
-    const deadline = Date.now() + 14_000;
-    do {
-      let result;
-      try {
-        result = await chrome.tabs.sendMessage(tab.id, {
-          type: "nju-purchase/read-detail", orderId: source.id
-        });
-      } catch {
-        // A newly created tab has no receiver until its detail script loads.
-      }
-      if (result?.rows || result?.error) return result;
-      await new Promise(resolve => setTimeout(resolve, 300));
-    } while (Date.now() < deadline);
-    return { error: "订单详情加载超时，可能需要重新登录。" };
-  } finally {
-    await chrome.tabs.remove(tab.id).catch(() => {});
-  }
-}
-
 chrome.runtime.onMessage.addListener((message, sender, respond) => {
   const type = message?.type;
-  if (!["nju-purchase/load-detail", "nju-purchase/read-exports",
+  if (!["nju-purchase/read-exports",
     "nju-purchase/export", "nju-purchase/mark-old-export"].includes(type)) return;
   if (sender.id !== chrome.runtime.id || !sender.tab || !core.isOrderList(sender.url)) {
     respond({ error: "请从南京大学试剂系统的「我的订单」使用同步采购。" });
     return;
   }
-  if (type === "nju-purchase/load-detail") {
-    const source = core.detailLink(message.url);
-    if (!source) {
-      respond({ error: "订单详情地址无效。" });
-      return;
-    }
-    readDetail(source, sender.tab.windowId).then(
-      respond, () => respond({ error: "未能读取订单详情，请稍后重试。" })
-    );
-  } else {
-    exportPurchase(message, sender).then(respond, error => respond({ error: error.message }));
-  }
+  exportPurchase(message, sender).then(respond, error => respond({ error: error.message }));
   return true;
 });

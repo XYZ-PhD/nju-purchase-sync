@@ -6,8 +6,8 @@
 
 | 浏览器 | 安装包 |
 | --- | --- |
-| Google Chrome | [下载 Chrome 版 v1.2.0](https://github.com/XYZ-PhD/nju-purchase-sync/releases/download/v1.2.0/nju-purchase-sync-chrome-v1.2.0.zip) |
-| Microsoft Edge | [下载 Edge 版 v1.2.0](https://github.com/XYZ-PhD/nju-purchase-sync/releases/download/v1.2.0/nju-purchase-sync-edge-v1.2.0.zip) |
+| Google Chrome | [下载 Chrome 版 v1.2.1](https://github.com/XYZ-PhD/nju-purchase-sync/releases/download/v1.2.1/nju-purchase-sync-chrome-v1.2.1.zip) |
+| Microsoft Edge | [下载 Edge 版 v1.2.1](https://github.com/XYZ-PhD/nju-purchase-sync/releases/download/v1.2.1/nju-purchase-sync-edge-v1.2.1.zip) |
 
 ## 安装
 
@@ -32,6 +32,8 @@
 2. 在「采购明细」中勾选要入库的商品。翻页后，已勾选的商品会保留。
 3. 确认「已选」数量，点击「导出所选 .xls」。
 4. 打开 Excel，补填试剂编号和其他入库信息，再在 X-MOL 中导入。
+
+v1.2.1 在当前订单页后台读取详情，同步时不会逐笔打开新标签页。同步期间保持该页面打开；需要中止时点「停止」，已保存的订单仍可查看。
 
 | 信息 | X-MOL 模板列 |
 | --- | --- |

@@ -503,27 +503,29 @@
           message("正在读取订单列表…");
           const orders = await collectOrders(all, signal);
           total = orders.length;
-          for (let index = 0; index < total && !signal.aborted; index += 2) {
-            const batch = orders.slice(index, index + 2);
-            message("正在读取订单详情，已处理 " + index + " / " + total + " 笔。");
-            const results = await Promise.allSettled(batch.map(order => services.loadDetail(order.url)));
-            let changed = false;
-            results.forEach((result, offset) => {
-              const order = batch[offset];
-              if (result.status === "fulfilled" && result.value?.rows?.length) {
-                database.orders[order.id] = { ...order, items: result.value.rows };
-                completed++;
-                changed = true;
-              } else {
-                const problem = result.status === "rejected" ? result.reason?.message : result.value?.error;
-                failures.push(order.number + " · " + (problem || "未读取到商品明细。"));
+          if (!total || signal.aborted) return;
+          const reader = services.createDetailReader(signal);
+          try {
+            for (const [index, order] of orders.entries()) {
+              if (signal.aborted) break;
+              message("正在读取订单详情，已处理 " + index + " / " + total + " 笔。");
+              let items;
+              try {
+                items = await reader.read(order.url);
+              } catch (error) {
+                if (signal.aborted) break;
+                if (error.detailUnavailable) throw error;
+                failures.push(order.number + " · " + (error.message || "未读取到商品明细。"));
+                continue;
               }
-            });
-            if (changed) {
+              database.orders[order.id] = { ...order, items };
               database.lastSync = new Date().toISOString();
               await services.write(storageKey, database);
+              completed++;
               render();
             }
+          } finally {
+            reader.close();
           }
         });
         const note = signal.aborted ? "已停止" : failures.length ? "同步结束" :
