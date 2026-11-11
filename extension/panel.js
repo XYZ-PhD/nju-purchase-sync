@@ -160,6 +160,7 @@
     let storageKey = "";
     let view = "detail";
     let tablePage = 1;
+    let opening = false;
     let activeSync = null;
     let updatingExport = false;
     let exportHistory = {};
@@ -480,10 +481,16 @@
 
     function controls() {
       const running = activeSync !== null;
-      elements.syncPage.disabled = running;
-      elements.syncAll.disabled = running;
+      elements.syncPage.disabled = running || !storageKey;
+      elements.syncAll.disabled = running || !storageKey;
       elements.stop.hidden = !running;
       elements.stop.disabled = activeSync?.signal.aborted ?? false;
+    }
+
+    function savedAt() {
+      return database.lastSync
+        ? " 最近保存 " + new Date(database.lastSync).toLocaleString("zh-CN", { hour12: false }) + "。"
+        : "";
     }
 
     async function sync(all) {
@@ -530,11 +537,7 @@
         });
         const note = signal.aborted ? "已停止" : failures.length ? "同步结束" :
           total ? "同步完成" : "当前筛选没有订单";
-        const date = database.lastSync && new Date(database.lastSync).toLocaleString("zh-CN", {
-          hour12: false
-        });
-        message(note + "。已更新 " + completed + " / " + total + " 笔订单。" +
-          (date ? " 最近保存 " + date + "。" : "") +
+        message(note + "。已更新 " + completed + " / " + total + " 笔订单。" + savedAt() +
           (failures.length ? " " + failures.length + " 笔需要重试。" : ""), failures);
       } catch (error) {
         if (signal.aborted && error.name === "AbortError") {
@@ -542,7 +545,7 @@
         } else {
           message("同步中断。已保存的订单仍可查看。", [...failures, error.message]);
         }
-        database = await services.read(storageKey).catch(() => ({ orders: {}, stocked: {} }));
+        database = await services.read(storageKey).catch(() => database);
       } finally {
         activeSync = null;
         controls();
@@ -551,27 +554,53 @@
     }
 
     async function open() {
-      if (dialog.open) return;
-      const account = core.readAccount(doc);
-      storageKey = account ? core.purchaseKeyPrefix + account : "";
-      database = { orders: {}, stocked: {} };
-      exportHistory = {};
-      const revision = ++exportRevision;
-      selectedKeys.clear();
-      dialog.showModal();
-      render();
-      if (!storageKey) {
-        elements.syncPage.disabled = true;
-        elements.syncAll.disabled = true;
-        message("请先登录南京大学试剂系统。");
-        return;
+      if (dialog.open || opening) return;
+      opening = true;
+      try {
+        const account = core.readAccount(doc);
+        storageKey = account ? core.purchaseKeyPrefix + account : "";
+        database = { orders: {}, stocked: {} };
+        exportHistory = {};
+        const revision = ++exportRevision;
+        selectedKeys.clear();
+
+        let status = "请先登录南京大学试剂系统。";
+        const errors = [];
+        if (storageKey) {
+          const [ledger, history] = await Promise.allSettled([
+            services.read(storageKey), services.readExportHistory(storageKey)
+          ]);
+          if (core.readAccount(doc) !== account) {
+            storageKey = "";
+            exportHistory = {};
+            status = "登录账号已变化，请关闭后重新打开「同步采购」。";
+          } else {
+            if (ledger.status === "fulfilled") {
+              database = ledger.value;
+              const count = Object.keys(database.orders ?? {}).length;
+              status = count
+                ? "已载入 " + count + " 笔已保存的订单。" + savedAt()
+                : "还没有同步记录。请点击「同步本页」或「同步筛选范围全部页」。";
+            } else {
+              status = "暂时无法读取上次保存的采购明细，请关闭后重试。";
+              if (ledger.reason?.message) errors.push(ledger.reason.message);
+            }
+            if (revision === exportRevision) {
+              if (history.status === "fulfilled") {
+                exportHistory = history.value ?? {};
+              } else {
+                errors.push("导出次数暂未读取，请关闭后重试。");
+              }
+            }
+          }
+        }
+        controls();
+        render();
+        message(status, errors);
+        dialog.showModal();
+      } finally {
+        opening = false;
       }
-      const loadHistory = services.readExportHistory(storageKey).then(history => {
-        if (revision === exportRevision) showExportHistory(history);
-      }).catch(error => {
-        if (revision === exportRevision) message("导出次数暂未读取。" + error.message);
-      });
-      await Promise.all([loadHistory, sync(false)]);
     }
 
     function stop() {
@@ -629,9 +658,11 @@
       }
     }
     services.watchExportHistory(accounts => {
-      if (!dialog.open || !storageKey) return;
+      if ((!dialog.open && !opening) || !storageKey) return;
       exportRevision++;
-      showExportHistory(accounts[storageKey] ?? {});
+      const history = accounts[storageKey] ?? {};
+      if (dialog.open) showExportHistory(history);
+      else exportHistory = history;
     });
     elements.exportSelected.addEventListener("click", () => { void recordSelection(false); });
     elements.markOldExport.addEventListener("click", () => { void recordSelection(true); });
