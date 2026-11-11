@@ -247,22 +247,5 @@
     return { bytes, nameFallbacks, missingFields };
   }
 
-  function download(doc, rows) {
-    const result = buildFile(rows);
-    const now = new Date();
-    const stamp = [now.getFullYear(), now.getMonth() + 1, now.getDate(), now.getHours(),
-      now.getMinutes(), now.getSeconds()].map(value => String(value).padStart(2, "0")).join("");
-    const blob = new Blob([result.bytes], { type: "application/vnd.ms-excel" });
-    const url = URL.createObjectURL(blob);
-    const anchor = doc.createElement("a");
-    anchor.href = url;
-    anchor.download = "x-mol_iv_products_" + stamp + ".xls";
-    doc.body.append(anchor);
-    anchor.click();
-    anchor.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 30_000);
-    return result;
-  }
-
-  globalThis.NjuPurchaseXls = { buildFile, download };
+  globalThis.NjuPurchaseXls = { buildFile };
 })();

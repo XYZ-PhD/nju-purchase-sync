@@ -71,6 +71,7 @@
     .muted { color: #796d80; }
     .chip { display: inline-block; padding: 2px 7px; border-radius: 20px;
       color: #6c5075; background: #f3eaf5; white-space: nowrap; font-size: 11px; }
+    .export-count { white-space: nowrap; }
     .green { color: #155e45; background: #e8f5ec; }
     .gray { color: #716872; background: #f1eef2; }
     .amber { color: #884b26; }
@@ -119,6 +120,8 @@
           <div class="selection">
             <span id="selected-count" class="selected-count" aria-live="polite">已选 0 条</span>
             <button id="clear-selected" type="button" disabled>清空选择</button>
+            <button id="mark-old-export" type="button" disabled
+              title="为选中的旧版已导出商品补记 1 次">补记旧版导出</button>
             <button id="export-selected" class="primary" type="button" disabled>导出所选 .xls</button>
           </div>
         </div>
@@ -151,13 +154,16 @@
       errorList: get("error-list"), surface: get("surface"), foot: get("footnote"),
       prev: get("prev"), next: get("next"), position: get("position"),
       selectedCount: get("selected-count"), clearSelected: get("clear-selected"),
-      exportSelected: get("export-selected")
+      exportSelected: get("export-selected"), markOldExport: get("mark-old-export")
     };
     let database = { orders: {}, stocked: {} };
     let storageKey = "";
     let view = "detail";
     let tablePage = 1;
     let activeSync = null;
+    let updatingExport = false;
+    let exportHistory = {};
+    let exportRevision = 0;
     const selectedKeys = new Set();
 
     function node(tag, text, className) {
@@ -189,7 +195,9 @@
       const count = selectedKeys.size;
       elements.selectedCount.textContent = "已选 " + count + " 条";
       elements.clearSelected.disabled = count === 0;
-      elements.exportSelected.disabled = count === 0 || activeSync !== null;
+      const cannotExport = count === 0 || activeSync !== null || updatingExport;
+      elements.exportSelected.disabled = cannotExport;
+      elements.markOldExport.disabled = cannotExport;
       const inputs = [...elements.surface.querySelectorAll(".row-select")];
       let checked = 0;
       for (const input of inputs) {
@@ -269,7 +277,7 @@
       }
       const columns = view === "summary"
         ? ["品牌", "CAS 号", "试剂", "订购数量", "订单数"]
-        : ["试剂及订单", "品牌", "CAS 号", "货号 / 包装", "订购数量", "商品状态"];
+        : ["试剂及订单", "品牌", "CAS 号", "货号 / 包装", "订购数量", "商品状态", "订单导出"];
       if (view === "arrival") columns.push("已入库数量");
       for (const title of columns) {
         const cell = node("th", title);
@@ -314,6 +322,22 @@
       cell.append(button);
     }
 
+    function showExportCount(cell) {
+      const count = exportHistory.orders?.[cell.dataset.orderId]?.count ?? 0;
+      const itemCount = exportHistory.items?.[cell.dataset.itemKey]?.count ?? 0;
+      cell.replaceChildren(count
+        ? node("span", "已导出 " + count + " 次", "chip green")
+        : node("span", "无导出记录", "chip gray"));
+      if (itemCount !== count) {
+        cell.append(node("span", itemCount ? "本商品 " + itemCount + " 次" : "本商品无记录", "sub"));
+      }
+    }
+
+    function showExportHistory(history) {
+      exportHistory = history;
+      for (const cell of elements.surface.querySelectorAll(".export-count")) showExportCount(cell);
+    }
+
     function addOrderRow(tr, row) {
       tr.className = "selectable";
       const selection = tr.insertCell();
@@ -356,6 +380,11 @@
       if (row.order.status && row.order.status !== productState) {
         status.append(node("span", "订单 " + row.order.status, "sub"));
       }
+      const exported = tr.insertCell();
+      exported.className = "export-count";
+      exported.dataset.orderId = row.order.id;
+      exported.dataset.itemKey = row.key;
+      showExportCount(exported);
       if (view === "arrival") addStockedControl(tr.insertCell(), row);
     }
 
@@ -522,8 +551,10 @@
     async function open() {
       if (dialog.open) return;
       const account = core.readAccount(doc);
-      storageKey = account ? "nju-purchase-v1:" + account : "";
+      storageKey = account ? core.purchaseKeyPrefix + account : "";
       database = { orders: {}, stocked: {} };
+      exportHistory = {};
+      const revision = ++exportRevision;
       selectedKeys.clear();
       dialog.showModal();
       render();
@@ -533,7 +564,12 @@
         message("请先登录南京大学试剂系统。");
         return;
       }
-      await sync(false);
+      const loadHistory = services.readExportHistory(storageKey).then(history => {
+        if (revision === exportRevision) showExportHistory(history);
+      }).catch(error => {
+        if (revision === exportRevision) message("导出次数暂未读取。" + error.message);
+      });
+      await Promise.all([loadHistory, sync(false)]);
     }
 
     function stop() {
@@ -557,18 +593,46 @@
       selectedKeys.clear();
       updateSelection();
     });
-    elements.exportSelected.addEventListener("click", () => {
-      if (!selectedKeys.size || activeSync) return;
+    async function recordSelection(oldExport) {
+      if (!selectedKeys.size || activeSync || updatingExport || !storageKey) return;
+      const key = storageKey;
+      const rows = core.records(database).filter(row => selectedKeys.has(row.key));
+      updatingExport = true;
+      updateSelection();
       try {
-        const rows = core.records(database).filter(row => selectedKeys.has(row.key));
-        const result = globalThis.NjuPurchaseXls.download(doc, rows);
+        if (oldExport) {
+          const result = await services.markOldExport(key, rows);
+          if (dialog.open && storageKey === key && !activeSync) {
+            message(result.changed ? "已补记所选商品的旧版导出。" : "所选商品已补记过旧版导出。");
+          }
+          return;
+        }
+        const result = await services.exportRows(key, rows);
+        if (!dialog.open || storageKey !== key || activeSync) return;
+        if (result.state === "interrupted" || result.state === "erased") {
+          message("下载未完成，未计入导出次数。");
+          return;
+        }
         message("已生成 " + rows.length + " 条商品的 X-MOL .xls。" +
+          (result.state === "complete" ? " 导出次数已更新。" : " 下载完成后更新次数。") +
           (result.nameFallbacks ? " " + result.nameFallbacks + " 条缺有效 CAS，已填产品名称。" : "") +
           (result.missingFields ? " " + result.missingFields + " 条的品牌或包装规格待补。" : ""));
       } catch (error) {
-        message("导出失败。" + error.message);
+        if (dialog.open && storageKey === key && !activeSync) {
+          message((oldExport ? "补记失败。" : "导出未完成。") + error.message);
+        }
+      } finally {
+        updatingExport = false;
+        updateSelection();
       }
+    }
+    services.watchExportHistory(accounts => {
+      if (!dialog.open || !storageKey) return;
+      exportRevision++;
+      showExportHistory(accounts[storageKey] ?? {});
     });
+    elements.exportSelected.addEventListener("click", () => { void recordSelection(false); });
+    elements.markOldExport.addEventListener("click", () => { void recordSelection(true); });
     elements.prev.addEventListener("click", () => { tablePage--; render(); });
     elements.next.addEventListener("click", () => { tablePage++; render(); });
     for (const input of [elements.query, elements.since, elements.until]) {

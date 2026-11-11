@@ -118,6 +118,7 @@ test("background worker retries a not-yet-ready detail tab and closes only its o
     setTimeout: callback => setImmediate(callback),
     chrome: {
       runtime: { id: "extension", onMessage: { addListener: callback => { listener = callback; } } },
+      downloads: { onChanged: { addListener() {} }, onErased: { addListener() {} } },
       tabs: {
         create: async options => { calls.push(["open", options]); return { id: 413 }; },
         sendMessage: async (id, message) => {

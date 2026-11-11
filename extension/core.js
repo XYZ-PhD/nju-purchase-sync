@@ -4,6 +4,8 @@
   const origin = "https://reagent.nju.edu.cn";
   const listPath = "/labmai/cloudbean/personal/order";
   const detailPath = "/labmai/cloudbean/personal/orderDetail/";
+  const purchaseKeyPrefix = "nju-purchase-v1:";
+  const exportStorageKey = "nju-purchase-exports-v1";
   const clean = value => String(value ?? "").replace(/\s+/g, " ").trim();
   const label = value => clean(value).replace(/[：:]\s*$/, "");
 
@@ -170,6 +172,7 @@
   }
 
   globalThis.NjuPurchaseCore = {
+    purchaseKeyPrefix, exportStorageKey,
     clean, isOrderList, detailLink, readAccount, readOrderList, readOrderDetail,
     isCas, records, isExcluded, isArrival, aggregate, waitFor
   };

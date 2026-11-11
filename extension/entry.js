@@ -15,6 +15,13 @@
     color: "#fff", background: "#651d5e", borderColor: "#651d5e", fontWeight: "600"
   });
 
+  async function exportRequest(type, key, fields) {
+    const result = await chrome.runtime.sendMessage({ type, key, ...fields });
+    if (result?.error) throw new Error(result.error);
+    if (!result) throw new Error("未收到扩展响应，请重新加载订单页。");
+    return result;
+  }
+
   const services = {
     async read(key) {
       const { [key]: saved } = await chrome.storage.local.get(key);
@@ -25,6 +32,32 @@
     },
     loadDetail(url) {
       return chrome.runtime.sendMessage({ type: "nju-purchase/load-detail", url });
+    },
+    async readExportHistory(key) {
+      const result = await exportRequest("nju-purchase/read-exports", key);
+      return result.history;
+    },
+    watchExportHistory(update) {
+      chrome.storage.onChanged.addListener((changes, area) => {
+        const change = changes[core.exportStorageKey];
+        if (area === "local" && change) update(change.newValue?.accounts ?? {});
+      });
+    },
+    async exportRows(key, rows) {
+      const { bytes, nameFallbacks, missingFields } = globalThis.NjuPurchaseXls.buildFile(rows);
+      const url = URL.createObjectURL(new Blob([bytes], { type: "application/vnd.ms-excel" }));
+      try {
+        const result = await exportRequest("nju-purchase/export", key, {
+          url, items: rows.map(row => row.key)
+        });
+        return { ...result, nameFallbacks, missingFields };
+      } finally {
+        // Give the browser time to open the file stream before freeing the URL.
+        setTimeout(() => URL.revokeObjectURL(url), 30_000);
+      }
+    },
+    markOldExport(key, rows) {
+      return exportRequest("nju-purchase/mark-old-export", key, { items: rows.map(row => row.key) });
     },
     lock(key, action) {
       return navigator.locks.request(key, { ifAvailable: true }, lock => {

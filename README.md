@@ -6,8 +6,8 @@
 
 | 浏览器 | 安装包 |
 | --- | --- |
-| Google Chrome | [下载 Chrome 版 v1.1.0](https://github.com/XYZ-PhD/nju-purchase-sync/releases/download/v1.1.0/nju-purchase-sync-chrome-v1.1.0.zip) |
-| Microsoft Edge | [下载 Edge 版 v1.1.0](https://github.com/XYZ-PhD/nju-purchase-sync/releases/download/v1.1.0/nju-purchase-sync-edge-v1.1.0.zip) |
+| Google Chrome | [下载 Chrome 版 v1.2.0](https://github.com/XYZ-PhD/nju-purchase-sync/releases/download/v1.2.0/nju-purchase-sync-chrome-v1.2.0.zip) |
+| Microsoft Edge | [下载 Edge 版 v1.2.0](https://github.com/XYZ-PhD/nju-purchase-sync/releases/download/v1.2.0/nju-purchase-sync-edge-v1.2.0.zip) |
 
 ## 安装
 
@@ -24,6 +24,8 @@
 
 扩展通过这个文件夹运行，安装后请保留文件夹及其位置。
 
+已安装旧版时，用新版文件覆盖原扩展文件夹。在扩展管理页点「重新加载」，再刷新「我的订单」。使用原文件夹可保留该浏览器中的采购台账和入库记录。
+
 ## 使用
 
 1. 打开「同步采购」，等待当前页订单同步。需要更多订单时，点「同步筛选范围全部页」。
@@ -39,21 +41,26 @@
 
 每个勾选商品行导出一行。订购数量大于 1 时，如需每瓶单独编号，请在 Excel 中复制相应行并分别填写编号。
 
+「订单导出」列显示已完成的导出次数。同一份 .xls 选了同一订单的多件商品，订单只增加 1 次。只导出部分商品时，其他商品行会标出各自的记录。
+
+旧版没有保存订单导出历史。确认某件商品已经导出过时，可勾选它并点「补记旧版导出」。每个订单和商品最多补记 1 次。
+
 还可以搜索试剂名、品牌、CAS 号、货号、订单号，按下单日期筛选，查看「品牌与 CAS 汇总」，并在「到货核对」中记录已入库数量。
 
 ## 数据与使用说明
 
-- 同步由打开面板或点击同步按钮触发，使用当前登录账号可见的订单。采购台账与到货记录保存在当前浏览器的扩展本地存储中，并按网页显示的账号名分组。
+- 同步由打开面板或点击同步按钮触发，使用当前登录账号可见的订单。采购台账、到货记录和导出次数保存在当前浏览器的扩展本地存储中，并按网页显示的账号名分组。
+- 扩展使用浏览器的下载权限确认本扩展发起的 .xls 下载状态。下载完成后才计次，取消或下载失败时不增加次数。
 - CAS 号会进行格式和校验位检查。缺少有效 CAS 时，导出表格使用产品名称标识该商品。缺失的品牌、包装规格及其他字段需要补全。
 - 汇总会排除已取消、已退货、已退款的订单，以及已取消、已退货、已退款、退货中或退款中的商品行。导出所选商品时，以实际勾选的商品行为准。
-- Chrome v1.1.0 已完成两条真实订单的跨页勾选与导出核对，B、F、I 列与模板匹配。Edge 使用相同扩展代码，目前完成安装包校验和离线测试，浏览器实测待完成。
+- Chrome v1.1.0 已用真实订单核对跨页勾选与 B、F、I 列。v1.2.0 已在 Chrome 和 Edge 中用模拟订单核对下载、计次、刷新保留和补记去重。
 
 ## 源码与测试
 
-`extension/` 是可直接加载的扩展源码，`tests/` 使用模拟数据。安装 Node.js 18 或更新版本后，在仓库目录运行以下命令可执行 8 项离线测试。
+`extension/` 是可直接加载的扩展源码，`tests/` 使用模拟数据。安装 Node.js 18 或更新版本后，在仓库目录运行以下命令可执行离线测试。
 
 ```sh
-node --test tests/logic.test.cjs tests/xls-export.test.cjs
+node --test tests/logic.test.cjs tests/xls-export.test.cjs tests/export-history.test.cjs
 ```
 
 安装 Python 3 后，可分别重新生成两个浏览器的安装包，输出保存在 `dist/`。
