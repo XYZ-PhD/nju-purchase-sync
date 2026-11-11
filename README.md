@@ -1,0 +1,66 @@
+# 同步采购 · 南大试剂
+
+在南京大学试剂管理系统的「我的订单」页面整理采购明细，跨页勾选商品，并导出适用于 X-MOL 库存导入模板的 Excel 表格。
+
+## 下载
+
+| 浏览器 | 安装包 |
+| --- | --- |
+| Google Chrome | [下载 Chrome 版 v1.1.0](https://github.com/XYZ-PhD/nju-purchase-sync/releases/download/v1.1.0/nju-purchase-sync-chrome-v1.1.0.zip) |
+| Microsoft Edge | [下载 Edge 版 v1.1.0](https://github.com/XYZ-PhD/nju-purchase-sync/releases/download/v1.1.0/nju-purchase-sync-edge-v1.1.0.zip) |
+
+## 安装
+
+1. 下载与你使用的浏览器对应的 ZIP，右键选择「全部解压」。把解压出的文件夹放在固定位置。
+2. 打开浏览器，在顶部地址栏输入下面对应的地址，然后按回车。
+
+   | 浏览器 | 输入地址 | 打开的开关 | 点击的按钮 |
+   | --- | --- | --- | --- |
+   | Chrome | `chrome://extensions` | 开发者模式 | 加载已解压的扩展程序 |
+   | Edge | `edge://extensions` | 开发人员模式 | 加载解压缩 |
+
+3. 选择解压后里面的 `nju-purchase-sync` 或 `nju-purchase-sync-edge` 文件夹。打开这个文件夹应能看到 `manifest.json`。
+4. 登录 [南大试剂系统「我的订单」](https://reagent.nju.edu.cn/labmai/cloudbean/personal/order)，刷新页面。点击原「导出」按钮右边的紫色「同步采购」。
+
+扩展通过这个文件夹运行，安装后请保留文件夹及其位置。
+
+## 使用
+
+1. 打开「同步采购」，等待当前页订单同步。需要更多订单时，点「同步筛选范围全部页」。
+2. 在「采购明细」中勾选要入库的商品。翻页后，已勾选的商品会保留。
+3. 确认「已选」数量，点击「导出所选 .xls」。
+4. 打开 Excel，补填试剂编号和其他入库信息，再在 X-MOL 中导入。
+
+| 信息 | X-MOL 模板列 |
+| --- | --- |
+| CAS 号 | B 列 |
+| 品牌 | F 列 |
+| 包装规格 | I 列 |
+
+每个勾选商品行导出一行。订购数量大于 1 时，如需每瓶单独编号，请在 Excel 中复制相应行并分别填写编号。
+
+还可以搜索试剂名、品牌、CAS 号、货号、订单号，按下单日期筛选，查看「品牌与 CAS 汇总」，并在「到货核对」中记录已入库数量。
+
+## 数据与使用说明
+
+- 同步由打开面板或点击同步按钮触发，使用当前登录账号可见的订单。采购台账与到货记录保存在当前浏览器的扩展本地存储中，并按网页显示的账号名分组。
+- CAS 号会进行格式和校验位检查。缺少有效 CAS 时，导出表格使用产品名称标识该商品。缺失的品牌、包装规格及其他字段需要补全。
+- 汇总会排除已取消、已退货、已退款的订单，以及已取消、已退货、已退款、退货中或退款中的商品行。导出所选商品时，以实际勾选的商品行为准。
+- Chrome v1.1.0 已完成两条真实订单的跨页勾选与导出核对，B、F、I 列与模板匹配。Edge 使用相同扩展代码，目前完成安装包校验和离线测试，浏览器实测待完成。
+
+## 源码与测试
+
+`extension/` 是可直接加载的扩展源码，`tests/` 使用模拟数据。安装 Node.js 18 或更新版本后，在仓库目录运行以下命令可执行 8 项离线测试。
+
+```sh
+node --test tests/logic.test.cjs tests/xls-export.test.cjs
+```
+
+安装 Python 3 后，可分别重新生成两个浏览器的安装包，输出保存在 `dist/`。
+
+```sh
+python scripts/package.py chrome
+python scripts/package.py edge
+```
+
+遇到问题可在 [Issues](https://github.com/XYZ-PhD/nju-purchase-sync/issues) 留下浏览器版本和操作步骤。
