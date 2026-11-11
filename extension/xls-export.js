@@ -223,6 +223,10 @@
     }
     directoryEntry(directory, "Root Entry", 5, 1, endOfChain, 0);
     directoryEntry(directory + 128, "Workbook", 2, freeSector, 0, size);
+    // MS-CFB: unused entries are zero except their sibling and child IDs, which must be NOSTREAM.
+    for (let entry = 2; entry < sectorSize / 128; entry++) {
+      result.fill(0xff, directory + 128 * entry + 68, directory + 128 * entry + 80);
+    }
     const allocation = (firstFat + 1) * sectorSize;
     result.fill(0xff, allocation);
     for (let i = 0; i < workbookSectors; i++) {

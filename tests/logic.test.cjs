@@ -110,61 +110,63 @@ test("summary keeps legitimate repeat purchases, avoids repeated snapshots and e
 });
 
 function readerFixture() {
-  let attachments = 0;
+  const frames = [];
   const navigations = [];
-  const frame = {
-    isConnected: false,
-    contentDocument: null,
-    setAttribute() {},
-    set src(value) { navigations.push(value); },
-    remove() { this.isConnected = false; }
-  };
+  const attached = new Set();
   const doc = {
     createElement: tag => {
       assert.equal(tag, "iframe");
+      const frame = {
+        contentDocument: null,
+        setAttribute() {},
+        set src(value) { navigations.push(value); },
+        remove() { attached.delete(this); }
+      };
+      frames.push(frame);
       return frame;
     },
     body: {
       append: element => {
-        assert.equal(element, frame);
-        element.isConnected = true;
-        attachments++;
+        assert.equal(attached.size, 0, "a previous detail frame is still attached");
+        attached.add(element);
       }
     }
   };
-  return { doc, frame, navigations, attachmentCount: () => attachments };
+  return { doc, frames, navigations, attached };
 }
 
-test("detail sync reads distinct orders through one hidden frame and ignores the previous document", async () => {
-  const { doc, frame, navigations, attachmentCount } = readerFixture();
+test("detail sync releases each hidden frame before opening the next order", async () => {
+  const { doc, frames, navigations, attached } = readerFixture();
   const reader = createReader(doc);
   await assert.rejects(reader.read("https://example.net" + detailPath), /地址无效/);
   assert.deepEqual(navigations, []);
   const first = reader.read(absoluteDetailUrl);
-  frame.contentDocument = { ...detailDocument([product]), URL: absoluteDetailUrl };
+  frames[0].contentDocument = { ...detailDocument([product]), URL: absoluteDetailUrl };
   assert.equal((await first)[0].name, product.name);
+  assert.equal(attached.size, 0);
 
   const nextUrl = absoluteDetailUrl.replace("0001?", "0002?");
   const next = reader.read(nextUrl);
   const secondProduct = { ...product, id: "502", name: "测试试剂乙" };
-  frame.contentDocument = { ...detailDocument([secondProduct]), URL: nextUrl };
+  frames[1].contentDocument = { ...detailDocument([secondProduct]), URL: nextUrl };
   assert.equal((await next)[0].name, secondProduct.name);
   assert.deepEqual(navigations, [absoluteDetailUrl, nextUrl]);
-  assert.equal(attachmentCount(), 1);
-  assert.equal(frame.hidden, true);
+  assert.equal(frames.length, 2);
+  assert.ok(frames.every(frame => frame.hidden));
   reader.close();
-  assert.equal(frame.isConnected, false);
+  assert.equal(attached.size, 0);
 });
 
 test("stopping a sync cancels the pending detail without starting the next order", async () => {
-  const { doc, frame, navigations } = readerFixture();
+  const { doc, attached, navigations } = readerFixture();
   const controller = new AbortController();
   const reader = createReader(doc, controller.signal);
   const pending = reader.read(absoluteDetailUrl);
   controller.abort();
   await assert.rejects(pending, { name: "AbortError" });
+  assert.equal(attached.size, 0);
   await assert.rejects(reader.read(absoluteDetailUrl), { name: "AbortError" });
   reader.close();
   assert.deepEqual(navigations, [absoluteDetailUrl]);
-  assert.equal(frame.isConnected, false);
+  assert.equal(attached.size, 0);
 });

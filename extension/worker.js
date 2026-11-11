@@ -129,8 +129,8 @@ chrome.runtime.onMessage.addListener((message, sender, respond) => {
   const type = message?.type;
   if (!["nju-purchase/read-exports",
     "nju-purchase/export", "nju-purchase/mark-old-export"].includes(type)) return;
-  if (sender.id !== chrome.runtime.id || !sender.tab || !core.isOrderList(sender.url)) {
-    respond({ error: "请从南京大学试剂系统的「我的订单」使用同步采购。" });
+  if (sender.id !== chrome.runtime.id || !sender.tab || !core.isSite(sender.url)) {
+    respond({ error: "请从南京大学试剂系统的「我的订单」使用导出xmol入库单。" });
     return;
   }
   exportPurchase(message, sender).then(respond, error => respond({ error: error.message }));

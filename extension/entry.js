@@ -2,21 +2,30 @@
   "use strict";
 
   const core = globalThis.NjuPurchaseCore;
-  if (!core.isOrderList(location.href)) return;
+  // The script runs on the whole site and waits for 我的订单, because the site switches
+  // pages without reloading. Hidden frames (the detail reader) never need the button.
+  if (window !== window.top) return;
   if (document.getElementById("nju-purchase-launcher")) return;
 
   const launcher = document.createElement("button");
   launcher.id = "nju-purchase-launcher";
   launcher.type = "button";
-  launcher.textContent = "同步采购";
+  launcher.textContent = "导出xmol入库单";
   launcher.className = "ant-btn ant-btn-primary";
   Object.assign(launcher.style, {
     marginInlineStart: "8px", whiteSpace: "nowrap", cursor: "pointer",
-    color: "#fff", background: "#651d5e", borderColor: "#651d5e", fontWeight: "600"
+    color: "#fff", background: "#63065f", borderColor: "#63065f", fontWeight: "600"
   });
 
+  // After the extension is reloaded or updated, this old content script loses its
+  // chrome.* access and Chrome only reports "Extension context invalidated".
+  function extension() {
+    if (!chrome.runtime?.id) throw new Error("扩展已更新或重新加载，请刷新「我的订单」页面后再打开。");
+    return chrome;
+  }
+
   async function exportRequest(type, key, fields) {
-    const result = await chrome.runtime.sendMessage({ type, key, ...fields });
+    const result = await extension().runtime.sendMessage({ type, key, ...fields });
     if (result?.error) throw new Error(result.error);
     if (!result) throw new Error("未收到扩展响应，请重新加载订单页。");
     return result;
@@ -24,11 +33,11 @@
 
   const services = {
     async read(key) {
-      const { [key]: saved } = await chrome.storage.local.get(key);
+      const { [key]: saved } = await extension().storage.local.get(key);
       return saved ?? { orders: {}, stocked: {} };
     },
-    write(key, database) {
-      return chrome.storage.local.set({ [key]: database });
+    async write(key, database) {
+      await extension().storage.local.set({ [key]: database });
     },
     createDetailReader(signal) {
       return globalThis.NjuPurchaseDetail.createReader(document, signal);
@@ -38,6 +47,8 @@
       return result.history;
     },
     watchExportHistory(update) {
+      // Skip silently here; open() then reports the reload hint from read().
+      if (!chrome.runtime?.id) return;
       chrome.storage.onChanged.addListener((changes, area) => {
         const change = changes[core.exportStorageKey];
         if (area === "local" && change) update(change.newValue?.accounts ?? {});
@@ -73,14 +84,30 @@
     void panel.open();
   });
 
-  function addLauncher() {
-    if (launcher.isConnected || !core.isOrderList(location.href)) return;
+  function placeLauncher() {
+    if (!core.isOrderList(location.href)) {
+      launcher.remove();
+      return;
+    }
+    if (launcher.isConnected) return;
     const exportButton = [...document.querySelectorAll("button")].find(
       button => core.clean(button.textContent) === "导出"
     );
     exportButton?.after(launcher);
   }
 
-  new MutationObserver(addLauncher).observe(document.body, { childList: true, subtree: true });
-  addLauncher();
+  // Page switches inside the site arrive as DOM changes; check at most once per frame.
+  let scheduled = false;
+  function schedule() {
+    if (scheduled) return;
+    scheduled = true;
+    requestAnimationFrame(() => {
+      scheduled = false;
+      placeLauncher();
+    });
+  }
+
+  new MutationObserver(schedule).observe(document.body, { childList: true, subtree: true });
+  addEventListener("popstate", schedule);
+  placeLauncher();
 })();

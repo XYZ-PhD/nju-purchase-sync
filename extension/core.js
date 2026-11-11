@@ -19,6 +19,10 @@
     }
   }
 
+  function isSite(value) {
+    return urlAtSite(value) !== null;
+  }
+
   function isOrderList(value) {
     const url = urlAtSite(value);
     return url?.pathname.replace(/\/$/, "") === listPath;
@@ -173,7 +177,7 @@
 
   globalThis.NjuPurchaseCore = {
     purchaseKeyPrefix, exportStorageKey,
-    clean, isOrderList, detailLink, readAccount, readOrderList, readOrderDetail,
+    clean, isSite, isOrderList, detailLink, readAccount, readOrderList, readOrderDetail,
     isCas, records, isExcluded, isArrival, aggregate, waitFor
   };
 })();
